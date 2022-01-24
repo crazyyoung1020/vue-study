@@ -21,9 +21,13 @@
             // template: '<div>template</div>',
             // template: '#app',
             // render(h){return h('div','render')},
-            data:{foo:'foo'}
+            data:{
+                foo:'foo',
+                list:{}
+            }
         })
         console.log(app.$options.render);
+        Vue.set(app.$data.list,'test',1)
         
     </script>
 </body>

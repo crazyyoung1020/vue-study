@@ -1,6 +1,6 @@
 /*!
  * Vue.js v2.6.11
- * (c) 2014-2021 Evan You
+ * (c) 2014-2022 Evan You
  * Released under the MIT License.
  */
 (function (global, factory) {
@@ -930,12 +930,20 @@
    * object's property keys into getter/setters that
    * collect dependencies and dispatch updates.
    */
+
+  // __ob__
   var Observer = function Observer (value) {
     // 2.此处dep目的？
-    // 如果使用Vue.set/delete添加或删除属性，负责通知更新
+    // 我们使用Vue.set去给对象新增响应式属性的时候，底层实际是调用了defineReactive方法去新增的
+    // 在defineReactive内部是用defineProperty方法去处理的，那新增的同时才定义的数据拦截
+    // 可以这个新增操作其实已经修改了该对象了，我们应该要去发通知让组件更新的
+
+    // 所以这里的dep就是用来给Vue.set/delete添加或删除属性的时候，去发通知用的
+    // 包括数组push或者pop操作，都是通过这里的dep来通知的
     this.value = value;
     this.dep = new Dep();
     this.vmCount = 0;
+    // 注意，这一步里在ob的value下定义了一个响应式数据__ob__
     def(value, '__ob__', this);
 
     // 1.分辨传入对象类型
@@ -1040,7 +1048,8 @@
     customSetter,
     shallow
   ) {
-    // 创建key一一对应的dep
+    // 创建和key一一对应的dep
+    // 这个dep只有在key被访问时才会收集
     var dep = new Dep();
 
     var property = Object.getOwnPropertyDescriptor(obj, key);
@@ -1055,7 +1064,7 @@
       val = obj[key];
     }
 
-    // 递归遍历
+    // 递归遍历子属性，得到一个子Observer实例
     var childOb = !shallow && observe(val);
     Object.defineProperty(obj, key, {
       enumerable: true,
@@ -1065,11 +1074,30 @@
         // 如果存在，说明此次调用触发者是一个Watcher实例
         // dep n：n watcher
         if (Dep.target) {
+          // 假设数据结构为obj={
+          //   obj1:{
+          //     a:1
+          //   }
+          // }
+          // 那么这个dep就是在obj.obj1,或者obj.val读取操作的时候，通知对应的watcher去更新
+          // 而如果Vue.set(obj,obj2,{})这种操作，这里就控制不到了，就需要下面的childOb的dep
           // 建立dep和Dep.target之间依赖关系
+          // 这个dep是这个变量对应的dep，是在当前这个defineReactive方法里创建的dep实例
           dep.depend();
 
           if (childOb) {
             // 建立ob内部dep和Dep.target之间依赖关系
+            // 由于每一个childOb都是一个Observer实例，在创建的时候都同时创建了dep实例
+            // 触发Vue.set的时候也需要去通知更新，通知谁呢，就也通知这个obj对应的watcher
+            // 也就是Vue.set(obj,obj1)操作会执行defineReactive里的defineProperty，新增属性
+            // 其实读或者新增都是obj在变，就是要通知obj的watcher去更新，所以这里childObj的dep也把当前的obj对应的wacther给收集起来
+
+            // 这里其实换一种说法更好理解
+            // obj修改属性，可以由obj在defineReactive的时候创建的dep去收集依赖，因为修改的时候会读以下触发get
+            // 而调用Vue.set新增的时候，由于触发不了get，所以没办法去直接收集依赖
+            // 那就想了个办法，在每一个对象对应的Observer被创建的时候，我们都去新建一个dep收集器
+            // 然后让这个收集器也去收集对象的父对象的依赖
+            // 因为假设obj = {a:1},那么obj.a和obj新增一个不存的key，本质都是要obj的watcher去更新对吧
             childOb.dep.depend();
             // 如果是数组，数组内部所有项都要做相同处理
             if (Array.isArray(value)) {
@@ -1135,7 +1163,25 @@
       target[key] = val;
       return val
     }
+    // ob是traget目标的响应式属性，该响应式属性的value对应的是创建这个响应式属性时候的对象
+    // 其实这里target === obj.value,这么绕是要保证Vue.set第一个参数是响应式的
     defineReactive(ob.value, key, val);
+    // 这里，就是为什么要花那么多段文字描述Vue.set收集依赖和watcher读取不一样的原因
+    // 因为set完之后，没办法去要取发通知，那发给谁的，我在谁下面新增属性，代表是谁改变了，我就通知谁，这里的ob是target的ob，所以我们通知的就是target的watcher
+    // 我们要通知的是target，那就得知道target依赖的watcher有哪些，所以每个Observer实例创建的时候要同时创建一个dep用来保存它变更对应的watcher,存在实例的响应式属性__ob__下
+    // 那么个obj的属性被访问的时候，obj变更了，我们就会收集watcher；那么obj的属性被创建的时候,obj也变了，也应该是刚才那些watcher
+    // 所以当obj被get的时候，拿到的watcher要存一份到obj的子属性里的dep里才行
+
+    // data:{
+    //   obj:{
+    //     a:1
+    //   }
+    // }
+
+    // data.obj => 触发get依赖收集，存一份在闭包，存一份在obj.__ob__.dep里
+    // data.obj的值发生变更会去通知视图更新，这个watcher对应的是读取data的obj属性
+    // 那么当我们Vue.set(obj,b,1)时，就可以去obj.__ob__.dep里面取出刚才读取data.obj的watcher，去通知更新
+    // 因为这个时候等于是obj发生了变化
     ob.dep.notify();
     return val
   }
@@ -2975,7 +3021,7 @@
     target._o = markOnce;
     target._n = toNumber;
     target._s = toString;
-    target._l = renderList;
+    target._l = renderList; // v-for
     target._t = renderSlot;
     target._q = looseEqual;
     target._i = looseIndexOf;
@@ -3211,6 +3257,7 @@
 
   var hooksToMerge = Object.keys(componentVNodeHooks);
 
+  // 如何转换自定义组件Ctor为一个vnode
   function createComponent (
     Ctor,
     data,
@@ -3334,6 +3381,7 @@
     return new vnode.componentOptions.Ctor(options)
   }
 
+  // 这里面hooks只会在patch里面发生作用
   function installComponentHooks (data) {
     var hooks = data.hook || (data.hook = {});
     for (var i = 0; i < hooksToMerge.length; i++) {
@@ -3458,6 +3506,7 @@
       children = simpleNormalizeChildren(children);
     }
 
+    // 将要返回的虚拟dom
     var vnode, ns;
     if (typeof tag === 'string') {
       var Ctor;
@@ -3476,7 +3525,9 @@
           config.parsePlatformTagName(tag), data, children,
           undefined, undefined, context
         );
-      } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
+      } else if ((!data || !data.pre) && 
+        // 获取自定义组件构造函数
+        isDef(Ctor = resolveAsset(context.$options, 'components', tag))) {
         // component
         vnode = createComponent(Ctor, data, context, children, tag);
       } else {
@@ -3541,6 +3592,7 @@
     var options = vm.$options;
     var parentVnode = vm.$vnode = options._parentVnode; // the placeholder node in parent tree
     var renderContext = parentVnode && parentVnode.context;
+    // 提前把插槽的内容存储下来，供后序子组件使用
     vm.$slots = resolveSlots(options._renderChildren, renderContext);
     vm.$scopedSlots = emptyObject;
     // bind the createElement fn to this instance
@@ -3552,6 +3604,7 @@
     // normalization is always applied for the public version, used in
     // user-written render functions.
     // 用户编写render函数使用这个
+    // render($createElement)
     vm.$createElement = function (a, b, c, d) { return createElement(vm, a, b, c, d, true); };
 
     // $attrs & $listeners are exposed for easier HOC creation.
@@ -3818,6 +3871,7 @@
     vm._events = Object.create(null);
     vm._hasHookEvent = false;
     // init parent attached events
+    // 组件在初始初始化的时候会将一些事件监听的处理函数放到_parentListeners，以供子组件使用
     var listeners = vm.$options._parentListeners;
     if (listeners) {
       updateComponentListeners(vm, listeners);
@@ -4074,6 +4128,7 @@
     };
   }
 
+  // $mount -> mountComponent
   // 真正的挂载
   function mountComponent (
     vm,
@@ -5085,8 +5140,10 @@
       callHook(vm, 'beforeCreate');
       // provide/inject
       // 组件数据和状态初始化
+      // 先将祖辈传过来的inject初始化并存好
       initInjections(vm); // resolve injections before data/props
       initState(vm); // data/props/methods/computed/watch
+      // 再将刚好存好的inject给它provide出去，给子孙组件继续使用
       initProvide(vm); // resolve provide after data/props
       callHook(vm, 'created');
 
@@ -5097,7 +5154,7 @@
         measure(("vue " + (vm._name) + " init"), startTag, endTag);
       }
 
-      // 设置了el选项组件，会自动挂载
+      // 设置了el选项组件，会自动挂载，就不需要再$mount了
       if (vm.$options.el) {
         vm.$mount(vm.$options.el);
       }
@@ -5168,6 +5225,7 @@
       warn('Vue is a constructor and should be called with the `new` keyword');
     }
     // 初始化
+    // 这个_init方法来自于initMixin
     this._init(options);
   }
 
@@ -5326,6 +5384,7 @@
           // 如果是对象，说明传入是组件配置，此时需要做转换：对象 =》组件构造函数
           // 这是为后续组件实例化做准备：new Ctor()
           if (type === 'component' && isPlainObject(definition)) {
+            // Vue.component('comp', {})
             definition.name = definition.name || id;
             // 构造函数获取：Vue.extend(obj) => VueComponent
             // const Ctor = Vue.extend()
@@ -5529,6 +5588,7 @@
     initUse(Vue);
     initMixin$1(Vue);
     initExtend(Vue);
+
     initAssetRegisters(Vue);
   }
 
@@ -6088,17 +6148,21 @@
     }
 
     // 如果是自定义组件，执行它的组件vnode钩子
+    // 从vnode中获取组件初始化钩子
     function createComponent (vnode, insertedVnodeQueue, parentElm, refElm) {
       var i = vnode.data;
       if (isDef(i)) {
         var isReactivated = isDef(vnode.componentInstance) && i.keepAlive;
         if (isDef(i = i.hook) && isDef(i = i.init)) {
+          // 执行自定义组件初始化钩子init
+          // 创建自定义组件实例并挂载之
           i(vnode, false /* hydrating */);
         }
         // after calling the init hook, if the vnode is a child component
         // it should've created a child instance and mounted it. the child
         // component also has set the placeholder vnode's elm.
         // in that case we can just return the element and be done.
+        // 如果前面执行成功，那么将获得组件实例
         if (isDef(vnode.componentInstance)) {
           initComponent(vnode, insertedVnodeQueue);
           insert(parentElm, vnode.elm, refElm);
@@ -6117,6 +6181,7 @@
       }
       vnode.elm = vnode.componentInstance.$el;
       if (isPatchable(vnode)) {
+        // 创建钩子负责处理组件的属性、事件等等
         invokeCreateHooks(vnode, insertedVnodeQueue);
         setScope(vnode);
       } else {

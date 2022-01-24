@@ -27,6 +27,8 @@ const weexFactoryPlugin = {
 
 const aliases = require('./alias')
 const resolve = p => {
+  // web-full-dev配置里的路径，就是经过这里处理了的
+  // 这里会把真正的web对应的路径找到，拼出完整的路径
   // web/xxx.js
   // base = web
   const base = p.split('/')[0]

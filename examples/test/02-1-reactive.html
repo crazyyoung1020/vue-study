@@ -15,6 +15,7 @@
         // 创建实例
         // 会有几个Observer？Dep？Watcher？
         //            2      4    1
+        // 因为有两个ob那么对应2个dep，而ob被创建的时候也有dep，所以有4个dep
         const app = new Vue({
             el: '#demo',
             data: { // ob + dep

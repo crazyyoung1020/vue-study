@@ -59,8 +59,10 @@ export function initMixin (Vue: Class<Component>) {
     callHook(vm, 'beforeCreate')
     // provide/inject
     // 组件数据和状态初始化
+    // 先将祖辈传过来的inject初始化并存好
     initInjections(vm) // resolve injections before data/props
     initState(vm) // data/props/methods/computed/watch
+    // 再将刚好存好的inject给它provide出去，给子孙组件继续使用
     initProvide(vm) // resolve provide after data/props
     callHook(vm, 'created')
 
@@ -71,7 +73,7 @@ export function initMixin (Vue: Class<Component>) {
       measure(`vue ${vm._name} init`, startTag, endTag)
     }
 
-    // 设置了el选项组件，会自动挂载
+    // 设置了el选项组件，会自动挂载，就不需要再$mount了
     if (vm.$options.el) {
       vm.$mount(vm.$options.el)
     }
