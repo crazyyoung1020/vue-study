@@ -35,9 +35,9 @@ const hooks = ['create', 'activate', 'update', 'remove', 'destroy']
 // 相同节点判断逻辑：
 // 1.key相同
 // 2.tag相同
-// 3.input type
-// 4.都是comment
-// 5.属性相同
+// 3.都是comment
+// 4.属性相同，同有同无即可，不用去精准判断，因为这里判断为同一节点之后，会去递归比较这两个节点，那个时候，会去强制把所有属性更新
+// 5.input type
 // 6.异步组件情况
 function sameVnode (a, b) {
   return (
@@ -75,16 +75,20 @@ function createKeyToOldIdx (children, beginIdx, endIdx) {
 }
 
 // 根据传入节点操作选项，返回patch
+// backend里面包含了nodeOps(节点操作方法)和modules(属性操作方法)
 export function createPatchFunction (backend) {
   let i, j
   const cbs = {}
 
   const { modules, nodeOps } = backend
-
   for (i = 0; i < hooks.length; ++i) {
+    // 此处的hooks如下，是上面定义的
+    // const hooks = ['create', 'activate', 'update', 'remove', 'destroy']
     cbs[hooks[i]] = []
     for (j = 0; j < modules.length; ++j) {
       if (isDef(modules[j][hooks[i]])) {
+        // cbs里面存的就是一个个以hooks数组里面的钩子为名字的属性操作方法，
+        // modules里面抛出的方法也刚好是用这些hooks名字定义的
         cbs[hooks[i]].push(modules[j][hooks[i]])
       }
     }
@@ -442,28 +446,32 @@ export function createPatchFunction (backend) {
       checkDuplicateKeys(newCh)
     }
 
-    // 循环条件是游标不能交叉
+    // 循环条件是游标不能交叉，就是start不能越过end
     while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
       // 前两个是校正
       if (isUndef(oldStartVnode)) {
         oldStartVnode = oldCh[++oldStartIdx] // Vnode has been moved left
       } else if (isUndef(oldEndVnode)) {
         oldEndVnode = oldCh[--oldEndIdx]
-      } else if (sameVnode(oldStartVnode, newStartVnode)) {
         // 查找顺序：两个开头，两个结尾，开始结束，结束开始
+        // 此处是头头
+      } else if (sameVnode(oldStartVnode, newStartVnode)) {
         patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
         oldStartVnode = oldCh[++oldStartIdx]
         newStartVnode = newCh[++newStartIdx]
+        // 此处是尾尾
       } else if (sameVnode(oldEndVnode, newEndVnode)) {
         patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
         oldEndVnode = oldCh[--oldEndIdx]
         newEndVnode = newCh[--newEndIdx]
+        // 此处是尾头
       } else if (sameVnode(oldStartVnode, newEndVnode)) { // Vnode moved right
         patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
         // 还需要额外节点移动
         canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm))
         oldStartVnode = oldCh[++oldStartIdx]
         newEndVnode = newCh[--newEndIdx]
+         // 此处是头尾
       } else if (sameVnode(oldEndVnode, newStartVnode)) { // Vnode moved left
         patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
         // 还需要额外节点移动
@@ -586,9 +594,12 @@ export function createPatchFunction (backend) {
     }
 
 
+    // 上面都是一些优化的部分，咱可以不用看
+    // 从下面部分开始看
+
     let i
     const data = vnode.data
-    // 钩子
+    // prepatch 钩子
     if (isDef(data) && isDef(i = data.hook) && isDef(i = i.prepatch)) {
       i(oldVnode, vnode)
     }
@@ -597,13 +608,23 @@ export function createPatchFunction (backend) {
     const oldCh = oldVnode.children
     const ch = vnode.children
 
-    // 比较双方属性
+    // 比较双方属性，节点有属性，并且是可以patch的，就去更新属性
+    // 这里有个疑问，会去更新input的value属性吗？
+    // isPatchable方法主要判断vnode 的tag 是否是undefined。
+    // 文本节点的tag就是undefined、 Text 元素直接调用nodeOps.setTextContent(elm, vnode.text) 更新text内容。
     if (isDef(data) && isPatchable(vnode)) {
+      // cbs里面是一堆属性操作用法，是createPatchOption时候传进来的
+      // 这里把所有的属性更新方法都调用了一遍
+      // attrs,klass,events,domProps,style,transition还有directives和refs这些属性的更新
       for (i = 0; i < cbs.update.length; ++i) cbs.update[i](oldVnode, vnode)
       if (isDef(i = data.hook) && isDef(i = i.update)) i(oldVnode, vnode)
     }
 
     // 根据双方类型几种情况分别处理
+    // 一个虚拟dom节点可能有几种状态，文本节点nodeType=3、元素节点nodeType=1、注释节点nodeType=8
+    // 如果是文本节点，子不可能有子节点
+    // 如果是元素节点，则可能有子节点，子节点可能是文本节点也可能是元素节点
+    // 首先判断新的vnode是不是文本节点，若不是那就是元素节点
     if (isUndef(vnode.text)) {
       if (isDef(oldCh) && isDef(ch)) {
         // 双方都有子元素，重排
@@ -620,6 +641,9 @@ export function createPatchFunction (backend) {
         nodeOps.setTextContent(elm, '')
       }
     } else if (oldVnode.text !== vnode.text) {
+      // 上面已经判断过 isUndef(vnode.text)那这里的if条件完整如下
+      // isDef(vnode.text) && oldVnode.text !== vnode.text
+      // 意思就是，新vnode是文本节点，旧vnode文本也是文本节点，且他们不一样，那么就更新文本
       nodeOps.setTextContent(elm, vnode.text)
     }
     if (isDef(data)) {
@@ -771,9 +795,12 @@ export function createPatchFunction (backend) {
     } else {
       // 平时框架走这里
       const isRealElement = isDef(oldVnode.nodeType)
+      // isRealElement == true,通过nodeType来判断是不是真正的元素，也就是真实的dom
+      // 不是真实dom，那说明是vNode
       if (!isRealElement && sameVnode(oldVnode, vnode)) {
         // patch existing root node
         // 将来更新流程：diff
+        // 能进到这里来，说明oldVnode和vnode都是虚拟dom
         patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
       } else {
         // 初始化流程
@@ -802,6 +829,7 @@ export function createPatchFunction (backend) {
           // either not server-rendered, or hydration failed.
           // create an empty node and replace it
           // 标准化：将传入真实节点转换为vnode
+          // emptyNodeAt方法里面return了一个vNode实例
           oldVnode = emptyNodeAt(oldVnode)
         }
 
@@ -812,6 +840,7 @@ export function createPatchFunction (backend) {
         const parentElm = nodeOps.parentNode(oldElm)
 
         // create new node
+        // 通过新的虚拟dom创建一颗树
         // 创建整棵树，将它追加到body的里面，parentElm旁边
         createElm(
           vnode,
@@ -820,7 +849,7 @@ export function createPatchFunction (backend) {
           // leaving transition. Only happens when combining transition +
           // keep-alive + HOCs. (#4590)
           oldElm._leaveCb ? null : parentElm,
-          nodeOps.nextSibling(oldElm)
+          nodeOps.nextSibling(oldElm)// 追加到oldElm这个元素(根节点)的旁边
         )
 
         // update parent placeholder node element, recursively
