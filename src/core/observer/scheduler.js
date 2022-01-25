@@ -166,7 +166,7 @@ function callActivatedHooks (queue) {
 // 尝试将传入watcher实例入队
 export function queueWatcher (watcher: Watcher) {
   const id = watcher.id
-  // 去重
+  // 去重，同一个watcher只能入队一次，入队多次没有意义
   if (has[id] == null) {
     has[id] = true
     if (!flushing) {

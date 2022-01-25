@@ -739,6 +739,9 @@
       // subs aren't sorted in scheduler if not running async
       // we need to sort them now to make sure they fire in correct
       // order
+      // 这里需要排序，是考虑到组件是有层级的，如果组件层级更靠上，更应该先被执行
+      // 组件越靠上，id越小
+      // 这里也能看到是一个升序排列
       subs.sort(function (a, b) { return a.id - b.id; });
     }
     // 循环内部管理所有watcher实例
@@ -4499,7 +4502,7 @@
   // 尝试将传入watcher实例入队
   function queueWatcher (watcher) {
     var id = watcher.id;
-    // 去重
+    // 去重，同一个watcher只能入队一次，入队多次没有意义
     if (has[id] == null) {
       has[id] = true;
       if (!flushing) {

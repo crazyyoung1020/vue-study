@@ -17,7 +17,14 @@
             el: '#demo',
             data: { foo: 'ready~~' },
             mounted() {            
-
+                // 如果nextTick放在这里，那nextTick里的回调会被先放入callbacks数组
+                // 下面修改完foo的值，还会再放一个flushComponentQueue到callbacks数组
+                // 那么执行callbacks = [cb,flushComponentQueue]
+                // 所以执行cb的时候视图还没有更新
+                // 所以会导致这里的输出也是ready，下面的同步代码之后的console也是ready
+                // this.$nextTick(() => {
+                //     console.log('p1.innerHTML:' + p1.innerHTML)
+                // })
                 this.foo = Math.random()
                 console.log('1:' + this.foo);
                 this.foo = Math.random()
