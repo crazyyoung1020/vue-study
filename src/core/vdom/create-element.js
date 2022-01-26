@@ -43,6 +43,8 @@ export function createElement (
   if (isTrue(alwaysNormalize)) {
     normalizationType = ALWAYS_NORMALIZE
   }
+  // 这里之所以没有找到render的时候是怎么递归的，
+  // 是因为render虚拟dom的递归是在render()函数里面做的
   return _createElement(context, tag, data, children, normalizationType)
 }
 

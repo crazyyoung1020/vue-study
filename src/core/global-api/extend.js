@@ -18,6 +18,7 @@ export function initExtend (Vue: GlobalAPI) {
    */
   Vue.extend = function (extendOptions: Object): Function {
     extendOptions = extendOptions || {}
+    // 这里的this其实就是Vue构造函数
     const Super = this
     const SuperId = Super.cid
     const cachedCtors = extendOptions._Ctor || (extendOptions._Ctor = {})
@@ -29,13 +30,37 @@ export function initExtend (Vue: GlobalAPI) {
     if (process.env.NODE_ENV !== 'production' && name) {
       validateComponentName(name)
     }
-
+    // Sub是我们要返回出去的组件的类，即构造函数
     const Sub = function VueComponent (options) {
       this._init(options)
     }
+    // 这里把Sub的原型指向为Vue构造函数的原型，实现一个继承，所有Sub的实例继承于vue实例
     Sub.prototype = Object.create(Super.prototype)
     Sub.prototype.constructor = Sub
     Sub.cid = cid++
+    // 此时Super.options为Vue构造函数下的默认配置选项，={
+    //   components:{ KeepAlive },
+    //   directive:{},
+    //   filter:{},
+    //   _base: Vue
+    // }
+    // extendOptions为用户传入的自定义配置选项 = {
+    //   props:{xxx},
+    //   componenst:{xxx},
+    //   created:{xxx}
+    //   ....
+    // }
+    // 合并之后，就成了
+    // Sub.options = {
+    //   props:{xxx},
+    //   components:{ KeepAlive ,xxx},
+    //   directive:{},
+    //   filter:{},
+    //   created:{xxx},
+    //   ...
+    //   _base: Vue
+    // }
+    // new Sub的时候就会用这些options去创建该组件的实例，所以该实例就能够直接使用全局的组件如keep-alive
     Sub.options = mergeOptions(
       Super.options,
       extendOptions

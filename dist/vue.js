@@ -3200,6 +3200,7 @@
         componentVNodeHooks.prepatch(mountedNode, mountedNode);
       } else {
         // 创建组件实例，首先获取构造函数
+        // createComponentInstanceForVnode会去找该组件的构造函数，并创建实例返回
         var child = vnode.componentInstance = createComponentInstanceForVnode(
           vnode,
           activeInstance
@@ -3209,6 +3210,8 @@
         //   Child created
         //   Child mounted
         // Parent mounted
+        // 这里child实习执行挂载，它又会去走一遍刚才的所有逻辑，也就是这里是一个递归的过程
+        // 如果child下还有组件，那还会往下继续递归
         child.$mount(hydrating ? vnode.elm : undefined, hydrating);
       }
     },
@@ -3271,11 +3274,12 @@
     if (isUndef(Ctor)) {
       return
     }
-
-    // 选项处理
+    // 选项处理，baseCtor就是Vue构造函数
     var baseCtor = context.$options._base;
 
     // plain options object: turn it into a constructor
+    // 这里刚才看过了，如果Ctor是对象，则把Vue构造函数的选项合并过来，并创建新的构造函数继承与Vue
+    // 那么就得到Ctor为新的组件构造函数
     if (isObject(Ctor)) {
       Ctor = baseCtor.extend(Ctor);
     }
@@ -3351,11 +3355,19 @@
     }
 
     // install component management hooks onto the placeholder node
-    // 安装组件钩子
+    // 给组件安装组件钩子
+    // 这一步以后，组件就有这么几个钩子
+    // data.hook = {
+    //   init:function(){},
+    //   insert:function(){},
+    //   prepatch:function(){},
+    //   destroy:function(){}
+    // }
     installComponentHooks(data);
 
     // return a placeholder vnode
     var name = Ctor.options.name || tag;
+    // 创建该组件的虚拟dom
     var vnode = new VNode(
       ("vue-component-" + (Ctor.cid) + (name ? ("-" + name) : '')),
       data, undefined, undefined, undefined, context,
@@ -3384,9 +3396,11 @@
     return new vnode.componentOptions.Ctor(options)
   }
 
+  // 安装钩子组件的钩子
   // 这里面hooks只会在patch里面发生作用
   function installComponentHooks (data) {
     var hooks = data.hook || (data.hook = {});
+    // hooksToMerge = ['init','insert','prepatch','destroy']
     for (var i = 0; i < hooksToMerge.length; i++) {
       var key = hooksToMerge[i];
       var existing = hooks[key];
@@ -3454,6 +3468,8 @@
     if (isTrue(alwaysNormalize)) {
       normalizationType = ALWAYS_NORMALIZE;
     }
+    // 这里之所以没有找到render的时候是怎么递归的，
+    // 是因为render虚拟dom的递归是在render()函数里面做的
     return _createElement(context, tag, data, children, normalizationType)
   }
 
@@ -3602,12 +3618,12 @@
     // so that we get proper render context inside it.
     // args order: tag, data, children, normalizationType, alwaysNormalize
     // internal version is used by render functions compiled from templates
-    // 内部版本，用于编译器生成的那些render函数
+    // 内部版本，用于编译器生成的那些render函数，最后一个参数表示的是不用做标准化处理，因为vue内部的render一定是标准化的
     vm._c = function (a, b, c, d) { return createElement(vm, a, b, c, d, false); };
     // normalization is always applied for the public version, used in
     // user-written render functions.
     // 用户编写render函数使用这个
-    // render($createElement)
+    // render($createElement)，这个是给用户用的h函数，最后一个参数表示需要标准化处理，因为用户传参可能不规则
     vm.$createElement = function (a, b, c, d) { return createElement(vm, a, b, c, d, true); };
 
     // $attrs & $listeners are exposed for easier HOC creation.
@@ -3659,6 +3675,8 @@
         // separately from one another. Nested component's render fns are called
         // when parent component is patched.
         currentRenderingInstance = vm;
+        // 调用render函数
+        // 这里render函数怎么玩的，要了解一下呀
         vnode = render.call(vm._renderProxy, vm.$createElement);
       } catch (e) {
         handleError(e, vm, "render");
@@ -5122,6 +5140,14 @@
         // internal component options needs special treatment.
         initInternalComponent(vm, options);
       } else {
+        // 这一步之后
+        // vm.$options = {
+        //   components:{},
+        //   directives:{},
+        //   filters:{},
+        //   _base:{},
+        //   el: "#demo"
+        // }
         vm.$options = mergeOptions(
           resolveConstructorOptions(vm.constructor),
           options || {},
@@ -5286,6 +5312,7 @@
      */
     Vue.extend = function (extendOptions) {
       extendOptions = extendOptions || {};
+      // 这里的this其实就是Vue构造函数
       var Super = this;
       var SuperId = Super.cid;
       var cachedCtors = extendOptions._Ctor || (extendOptions._Ctor = {});
@@ -5297,13 +5324,37 @@
       if ( name) {
         validateComponentName(name);
       }
-
+      // Sub是我们要返回出去的组件的类，即构造函数
       var Sub = function VueComponent (options) {
         this._init(options);
       };
+      // 这里把Sub的原型指向为Vue构造函数的原型，实现一个继承，所有Sub的实例继承于vue实例
       Sub.prototype = Object.create(Super.prototype);
       Sub.prototype.constructor = Sub;
       Sub.cid = cid++;
+      // 此时Super.options为Vue构造函数下的默认配置选项，={
+      //   components:{ KeepAlive },
+      //   directive:{},
+      //   filter:{},
+      //   _base: Vue
+      // }
+      // extendOptions为用户传入的自定义配置选项 = {
+      //   props:{xxx},
+      //   componenst:{xxx},
+      //   created:{xxx}
+      //   ....
+      // }
+      // 合并之后，就成了
+      // Sub.options = {
+      //   props:{xxx},
+      //   components:{ KeepAlive ,xxx},
+      //   directive:{},
+      //   filter:{},
+      //   created:{xxx},
+      //   ...
+      //   _base: Vue
+      // }
+      // new Sub的时候就会用这些options去创建该组件的实例，所以该实例就能够直接使用全局的组件如keep-alive
       Sub.options = mergeOptions(
         Super.options,
         extendOptions
@@ -5368,10 +5419,11 @@
     /**
      * Create asset registration methods.
      */
-    // ['component', 'directive', 'filter']
+    // ASSET_TYPES = ['component', 'directive', 'filter']
     ASSET_TYPES.forEach(function (type) {
       // Vue.component = function(id, def)
       // Vue.component('comp', {...})
+      // 这里就是在给Vue全局注册['component', 'directive', 'filter']这三个静态方法
       Vue[type] = function (
         id,
         definition // 组件配置对象
@@ -5387,11 +5439,21 @@
           // 如果是对象，说明传入是组件配置，此时需要做转换：对象 =》组件构造函数
           // 这是为后续组件实例化做准备：new Ctor()
           if (type === 'component' && isPlainObject(definition)) {
-            // Vue.component('comp', {})
+            // Vue.component('comp', {render(h){}})或者Vue.component('comp', {template:''})这样
             definition.name = definition.name || id;
-            // 构造函数获取：Vue.extend(obj) => VueComponent
+            // 构造函数获取：Vue.extend(obj) => VueComponent，根据传入的definition配置，返回一个组件构造函数
+            // 因为用户调用Vue.component()其实是在创造一个组件的构造函数类
+            // 要等用户去实例化的时候才会是一个真正的组件
             // const Ctor = Vue.extend()
             // new Ctor()
+            // this.options._base这个其实就是Vue构造函数
+            // 此时 Vue.options = {
+            //   components:{ KeepAlive },
+            //   directive:{},
+            //   filter:{},
+            //   _base: Vue
+            // }
+            // 查看后面的源码Vue.extend会把传入的对象和Vue构造函数的options合并，并继承，然后返回一个新的构造函数，即组件构造函数
             definition = this.options._base.extend(definition);
           }
           if (type === 'directive' && typeof definition === 'function') {
@@ -5400,7 +5462,15 @@
           // 2.注册到全局配置项中
           // options.components['comp'] = Ctor
           // 全局注册就是添加到系统选项中，以后所有组件初始化的时候，会有一个选项合并
-          // 那是所有这些全局组件就放入了当前组件的components选项中
+          // 那时所有这些全局组件就放入了当前组件实例的components选项中，所以我们在任意组件里都能使用这些全局组件
+          // 如果是component的话，这里的definition已经是处理好的组件构造函数了
+          // 直接给他挂载到全局的options.components里面{'copm':definition}
+          // 这里又把definition这个新的组件构造函数挂到了Vue构造函数下的options里，什么意思呢？
+          // 这一步就让这个新的组件等同于keep-alive一样，去全局注册了，
+          // 后面任何新的组件实例化的时候都会把这个options.component里面的所有组件合并到自己的选项里
+
+          // 这里能够看到options.component里注册的组件，要么值为对象，也就是那些props，created，data等钩子组成的对象
+          // 要么就是通过这个钩子对象处理好的构造函数，本质上最终都要处理成构造函数
           this.options[type + 's'][id] = definition;
           return definition
         }
@@ -5577,15 +5647,28 @@
       return obj
     };
 
+    // 这里能够看到，Vue构造函数下的options目前是一个空对象
     Vue.options = Object.create(null);
     ASSET_TYPES.forEach(function (type) {
+      // 往options下又添加components,'directive','filter'三个key，值分别为空对象
       Vue.options[type + 's'] = Object.create(null);
     });
 
     // this is used to identify the "base" constructor to extend all plain-object
     // components with in Weex's multi-instance scenarios.
     Vue.options._base = Vue;
-
+    // 此时Vue.options = {
+    //   components:{},
+    //   directive:{},
+    //   filter:{}
+    // }
+    // builtInComponents 是 keep-alive组件的options对象，将它扩展到components中
+    // 那么此时 Vue.options = {
+    //   components:{ KeepAlive },
+    //   directive:{},
+    //   filter:{},
+    //   _base: Vue
+    // }
     extend(Vue.options.components, builtInComponents);
 
     initUse(Vue);
@@ -6139,6 +6222,7 @@
           if (isDef(data)) {
             invokeCreateHooks(vnode, insertedVnodeQueue);
           }
+          // 将vnode.elm插入到parentElm的这个元素refElm的后面
           insert(parentElm, vnode.elm, refElm);
         }
 
@@ -6160,6 +6244,7 @@
       var i = vnode.data;
       if (isDef(i)) {
         var isReactivated = isDef(vnode.componentInstance) && i.keepAlive;
+        // 组件的init是什么时候挂载上来的
         if (isDef(i = i.hook) && isDef(i = i.init)) {
           // 执行自定义组件初始化钩子init
           // 创建自定义组件实例并挂载之
@@ -6169,7 +6254,7 @@
         // it should've created a child instance and mounted it. the child
         // component also has set the placeholder vnode's elm.
         // in that case we can just return the element and be done.
-        // 如果前面执行成功，那么将获得组件实例
+        // 如果前面执行成功，那么将获得组件实例vnode.componentInstance里面存放的就是上面创建完成的组件实例
         if (isDef(vnode.componentInstance)) {
           initComponent(vnode, insertedVnodeQueue);
           insert(parentElm, vnode.elm, refElm);
@@ -6774,6 +6859,7 @@
           // create new node
           // 通过新的虚拟dom创建一颗树
           // 创建整棵树，将它追加到body的里面，parentElm旁边
+          // 传入一个虚拟dom，创建一个真实dom
           createElm(
             vnode,
             insertedVnodeQueue,
@@ -12160,7 +12246,6 @@
     hydrating
   ) {
     el = el && query(el);
-
     /* istanbul ignore if */
     if (el === document.body || el === document.documentElement) {
        warn(
@@ -12195,6 +12280,8 @@
           return this
         }
       } else if (el) {
+        // 这里会拿到一份template类似于
+        // '<div id="demo">\n        <h1>Vue组件化机制</h1>\n        <div class="fatcher">\n            <div class="children1">children1</div>\n            <div class="children2">children2</div>\n        </div>\n        <comp foo="foo"></comp>\n    </div>'
         template = getOuterHTML(el);
       }
       // 如果存在template选项，则编译它，获取render函数
@@ -12205,6 +12292,8 @@
         }
 
         // 编译过程：template =》 render
+        // 这一步已经根据template的样子递归的将render函数创建出来了
+        // render函数一执行，就能渲染出虚拟dom
         var ref = compileToFunctions(template, {
           outputSourceRange: "development" !== 'production',
           shouldDecodeNewlines: shouldDecodeNewlines,

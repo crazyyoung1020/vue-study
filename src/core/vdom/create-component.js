@@ -49,6 +49,7 @@ const componentVNodeHooks = {
       componentVNodeHooks.prepatch(mountedNode, mountedNode)
     } else {
       // 创建组件实例，首先获取构造函数
+      // createComponentInstanceForVnode会去找该组件的构造函数，并创建实例返回
       const child = vnode.componentInstance = createComponentInstanceForVnode(
         vnode,
         activeInstance
@@ -58,6 +59,8 @@ const componentVNodeHooks = {
       //   Child created
       //   Child mounted
       // Parent mounted
+      // 这里child实习执行挂载，它又会去走一遍刚才的所有逻辑，也就是这里是一个递归的过程
+      // 如果child下还有组件，那还会往下继续递归
       child.$mount(hydrating ? vnode.elm : undefined, hydrating)
     }
   },
@@ -119,11 +122,12 @@ export function createComponent (
   if (isUndef(Ctor)) {
     return
   }
-
-  // 选项处理
+  // 选项处理，baseCtor就是Vue构造函数
   const baseCtor = context.$options._base
 
   // plain options object: turn it into a constructor
+  // 这里刚才看过了，如果Ctor是对象，则把Vue构造函数的选项合并过来，并创建新的构造函数继承与Vue
+  // 那么就得到Ctor为新的组件构造函数
   if (isObject(Ctor)) {
     Ctor = baseCtor.extend(Ctor)
   }
@@ -199,11 +203,19 @@ export function createComponent (
   }
 
   // install component management hooks onto the placeholder node
-  // 安装组件钩子
+  // 给组件安装组件钩子
+  // 这一步以后，组件就有这么几个钩子
+  // data.hook = {
+  //   init:function(){},
+  //   insert:function(){},
+  //   prepatch:function(){},
+  //   destroy:function(){}
+  // }
   installComponentHooks(data)
 
   // return a placeholder vnode
   const name = Ctor.options.name || tag
+  // 创建该组件的虚拟dom
   const vnode = new VNode(
     `vue-component-${Ctor.cid}${name ? `-${name}` : ''}`,
     data, undefined, undefined, undefined, context,
@@ -240,9 +252,11 @@ export function createComponentInstanceForVnode (
   return new vnode.componentOptions.Ctor(options)
 }
 
+// 安装钩子组件的钩子
 // 这里面hooks只会在patch里面发生作用
 function installComponentHooks (data: VNodeData) {
   const hooks = data.hook || (data.hook = {})
+  // hooksToMerge = ['init','insert','prepatch','destroy']
   for (let i = 0; i < hooksToMerge.length; i++) {
     const key = hooksToMerge[i]
     const existing = hooks[key]

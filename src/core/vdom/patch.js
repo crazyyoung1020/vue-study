@@ -209,6 +209,7 @@ export function createPatchFunction (backend) {
         if (isDef(data)) {
           invokeCreateHooks(vnode, insertedVnodeQueue)
         }
+        // 将vnode.elm插入到parentElm的这个元素refElm的后面
         insert(parentElm, vnode.elm, refElm)
       }
 
@@ -230,6 +231,7 @@ export function createPatchFunction (backend) {
     let i = vnode.data
     if (isDef(i)) {
       const isReactivated = isDef(vnode.componentInstance) && i.keepAlive
+      // 组件的init是什么时候挂载上来的
       if (isDef(i = i.hook) && isDef(i = i.init)) {
         // 执行自定义组件初始化钩子init
         // 创建自定义组件实例并挂载之
@@ -239,7 +241,7 @@ export function createPatchFunction (backend) {
       // it should've created a child instance and mounted it. the child
       // component also has set the placeholder vnode's elm.
       // in that case we can just return the element and be done.
-      // 如果前面执行成功，那么将获得组件实例
+      // 如果前面执行成功，那么将获得组件实例vnode.componentInstance里面存放的就是上面创建完成的组件实例
       if (isDef(vnode.componentInstance)) {
         initComponent(vnode, insertedVnodeQueue)
         insert(parentElm, vnode.elm, refElm)
@@ -842,6 +844,7 @@ export function createPatchFunction (backend) {
         // create new node
         // 通过新的虚拟dom创建一颗树
         // 创建整棵树，将它追加到body的里面，parentElm旁边
+        // 传入一个虚拟dom，创建一个真实dom
         createElm(
           vnode,
           insertedVnodeQueue,

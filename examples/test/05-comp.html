@@ -9,19 +9,29 @@
 <body>
     <div id="demo">
         <h1>Vue组件化机制</h1>
+        <div class="fatcher">
+            <div class="children1">children1</div>
+            <div class="children2">children2</div>
+        </div>
         <comp foo="foo"></comp>
     </div>
 
     <script>
-        
         Vue.component('comp', {
-            template: '<div>I am comp</div>'
+            template: `<div>
+                I am comp
+                <div>comp children</div>
+                </div>`
         })
         // 创建实例
         const app = new Vue({
             el: '#demo'
         });
-        console.log(app.$options.render);
+        // console.log(app.$options.render);
+        // ƒ anonymous(
+        // ) {
+        // with(this){return _c('div',{attrs:{"id":"demo"}},[_c('h1',[_v("Vue组件化机制")]),_v(" "),_m(0),_v(" "),_c('comp',{attrs:{"foo":"foo"}})],1)}
+        // }
     </script>
 </body>
 

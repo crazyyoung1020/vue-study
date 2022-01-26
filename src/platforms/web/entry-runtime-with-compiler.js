@@ -21,7 +21,6 @@ Vue.prototype.$mount = function (
   hydrating?: boolean
 ): Component {
   el = el && query(el)
-
   /* istanbul ignore if */
   if (el === document.body || el === document.documentElement) {
     process.env.NODE_ENV !== 'production' && warn(
@@ -56,6 +55,8 @@ Vue.prototype.$mount = function (
         return this
       }
     } else if (el) {
+      // 这里会拿到一份template类似于
+      // '<div id="demo">\n        <h1>Vue组件化机制</h1>\n        <div class="fatcher">\n            <div class="children1">children1</div>\n            <div class="children2">children2</div>\n        </div>\n        <comp foo="foo"></comp>\n    </div>'
       template = getOuterHTML(el)
     }
     // 如果存在template选项，则编译它，获取render函数
@@ -66,6 +67,8 @@ Vue.prototype.$mount = function (
       }
 
       // 编译过程：template =》 render
+      // 这一步已经根据template的样子递归的将render函数创建出来了
+      // render函数一执行，就能渲染出虚拟dom
       const { render, staticRenderFns } = compileToFunctions(template, {
         outputSourceRange: process.env.NODE_ENV !== 'production',
         shouldDecodeNewlines,

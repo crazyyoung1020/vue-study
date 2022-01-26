@@ -51,15 +51,28 @@ export function initGlobalAPI (Vue: GlobalAPI) {
     return obj
   }
 
+  // 这里能够看到，Vue构造函数下的options目前是一个空对象
   Vue.options = Object.create(null)
   ASSET_TYPES.forEach(type => {
+    // 往options下又添加components,'directive','filter'三个key，值分别为空对象
     Vue.options[type + 's'] = Object.create(null)
   })
 
   // this is used to identify the "base" constructor to extend all plain-object
   // components with in Weex's multi-instance scenarios.
   Vue.options._base = Vue
-
+  // 此时Vue.options = {
+  //   components:{},
+  //   directive:{},
+  //   filter:{}
+  // }
+  // builtInComponents 是 keep-alive组件的options对象，将它扩展到components中
+  // 那么此时 Vue.options = {
+  //   components:{ KeepAlive },
+  //   directive:{},
+  //   filter:{},
+  //   _base: Vue
+  // }
   extend(Vue.options.components, builtInComponents)
 
   initUse(Vue)
