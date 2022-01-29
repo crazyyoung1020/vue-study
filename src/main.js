@@ -10,6 +10,7 @@ import router from "./krouter";
 import store from "./kstore";
 import create from "./utils/create";
 
+// 把我们编写的svg图片加载组件引入进来，初始化全局组件，并自动import对应文件
 import '@/icon'
 
 Vue.config.productionTip = false;
